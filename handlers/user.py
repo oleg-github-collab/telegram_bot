@@ -4,7 +4,6 @@ import logging
 from sheets import SheetsManager
 
 logger = logging.getLogger(__name__)
-sheets = SheetsManager()
 
 def start(update: Update, context: CallbackContext) -> None:
     user = update.effective_user
@@ -15,6 +14,7 @@ def help_command(update: Update, context: CallbackContext) -> None:
 
 def get_content(update: Update, context: CallbackContext) -> None:
     try:
+        sheets = SheetsManager()  # Ініціалізація тут, а не при імпорті
         content = sheets.get_all_records("content")
 
         if not content:
@@ -51,11 +51,9 @@ def button_callback(update: Update, context: CallbackContext) -> None:
     if data.startswith("content_details_"):
         content_id = data.split("_")[-1]
         try:
-            # У реальному додатку тут буде отримання контенту за ID
             query.edit_message_text(text=f"Детальна інформація для контенту #{content_id}")
         except Exception as e:
             logger.error(f"Помилка в button_callback: {e}")
             query.edit_message_text(text="Помилка при отриманні деталей.")
-
     elif data == "next_content":
         query.edit_message_text(text="Наступний елемент контенту буде тут")
