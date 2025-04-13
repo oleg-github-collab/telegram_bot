@@ -1,7 +1,7 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackContext, ConversationHandler
 import logging
-from utils import is_admin
+from utils.helpers import is_admin
 from sheets import SheetsManager
 
 logger = logging.getLogger(__name__)
