@@ -1,60 +1,57 @@
-# 📁 bot.py
 import os
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext
-from utils.helpers import setup_logger, translate, LANGUAGES, get_main_menu
+import logging
+from telegram.ext import (
+    Updater, CommandHandler, CallbackQueryHandler,
+    MessageHandler, Filters, ConversationHandler
+)
 from config import BOT_TOKEN
+from handlers import (
+    start, help_command, get_content, button_callback,
+    admin_panel, admin_button_callback, title_handler,
+    description_handler, content_handler, confirmation_handler,
+    delete_content_callback,
+    TITLE, DESCRIPTION, CONTENT, CONFIRMATION
+)
+from utils.helpers import setup_logger
 
-# Setup logger
+# Налаштування логування
 setup_logger()
+logger = logging.getLogger(__name__)
 
-# Start command
-def start(update: Update, context: CallbackContext):
-    user = update.effective_user
-    context.user_data.clear()
-    keyboard = [[InlineKeyboardButton(lang, callback_data=f"lang_{code}")] for code, lang in LANGUAGES.items()]
-    update.message.reply_text("Please choose a language / Bitte Sprache wählen / Оберіть мову:", reply_markup=InlineKeyboardMarkup(keyboard))
-
-# Language selection
-def select_language(update: Update, context: CallbackContext):
-    query = update.callback_query
-    query.answer()
-    lang_code = query.data.split("_")[1]
-    context.user_data['lang'] = lang_code
-    query.edit_message_text(text=translate("Вітаю у боті Марини Камінської!", lang_code), reply_markup=get_main_menu(lang_code))
-
-# Main menu callback
-def handle_menu(update: Update, context: CallbackContext):
-    query = update.callback_query
-    lang = context.user_data.get('lang', 'ua')
-    data = query.data
-    query.answer()
-
-    if data == "menu_events":
-        query.edit_message_text(translate("Ось список подій, які плануються...", lang), reply_markup=get_main_menu(lang))
-    elif data == "menu_yoga":
-        query.edit_message_text(translate("Оберіть зручний час для заняття йогою...", lang), reply_markup=get_main_menu(lang))
-    elif data == "menu_schedule":
-        query.edit_message_text(translate("Ось розклад найближчих подій та занять:", lang), reply_markup=get_main_menu(lang))
-    elif data == "menu_shop":
-        query.edit_message_text(translate("Перейдіть до інтернет-магазину: https://marina-art-shop.com", lang), reply_markup=get_main_menu(lang))
-    elif data == "menu_about":
-        query.edit_message_text(translate("Марина Камінська — художниця та викладачка йоги...", lang), reply_markup=get_main_menu(lang))
-    elif data == "menu_main":
-        query.edit_message_text(translate("Головне меню:", lang), reply_markup=get_main_menu(lang))
-
-
-def main():
+def main() -> None:
+    """ Запуск бота в режимі polling """
     updater = Updater(BOT_TOKEN, use_context=True)
-    dp = updater.dispatcher
+    dispatcher = updater.dispatcher
 
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CallbackQueryHandler(select_language, pattern="^lang_"))
-    dp.add_handler(CallbackQueryHandler(handle_menu, pattern="^menu_"))
+    # Обробники команд
+    dispatcher.add_handler(CommandHandler("start", start))
+    dispatcher.add_handler(CommandHandler("help", help_command))
+    dispatcher.add_handler(CommandHandler("content", get_content))
+    dispatcher.add_handler(CommandHandler("admin", admin_panel))
 
+    # Обробники кнопок
+    dispatcher.add_handler(CallbackQueryHandler(button_callback))
+    dispatcher.add_handler(CallbackQueryHandler(admin_button_callback))
+    dispatcher.add_handler(CallbackQueryHandler(delete_content_callback))
+
+    # Conversation для додавання контенту адміністратором
+    conv_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(title_handler, pattern='^add_content$')],
+        states={
+            TITLE: [MessageHandler(Filters.text & ~Filters.command, title_handler)],
+            DESCRIPTION: [MessageHandler(Filters.text & ~Filters.command, description_handler)],
+            CONTENT: [MessageHandler(Filters.text & ~Filters.command, content_handler)],
+            CONFIRMATION: [CallbackQueryHandler(confirmation_handler)]
+        },
+        fallbacks=[CommandHandler("cancel", help_command)]
+    )
+
+    dispatcher.add_handler(conv_handler)
+
+    # Запуск
     updater.start_polling()
+    logger.info("🚀 Бот запущено в режимі polling.")
     updater.idle()
-
 
 if __name__ == '__main__':
     main()
