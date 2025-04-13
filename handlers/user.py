@@ -1,59 +1,45 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackContext
-import logging
 from sheets import SheetsManager
+import logging
 
 logger = logging.getLogger(__name__)
+sheets = SheetsManager()
 
 def start(update: Update, context: CallbackContext) -> None:
     user = update.effective_user
-    update.message.reply_text(f'Привіт, {user.first_name}! Ласкаво просимо до бота.')
+    update.message.reply_text(f"Привіт, {user.first_name}! Ласкаво просимо до бота.")
 
 def help_command(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text('Це допоміжне повідомлення. Ви можете використовувати наступні команди...')
+    update.message.reply_text("Доступні команди: /start /help /content")
 
 def get_content(update: Update, context: CallbackContext) -> None:
     try:
-        sheets = SheetsManager()  # Ініціалізація тут, а не при імпорті
-        content = sheets.get_all_records("content")
-
-        if not content:
-            update.message.reply_text("Вибачте, зараз немає доступного контенту.")
+        records = sheets.get_all_records("content")
+        if not records:
+            update.message.reply_text("Немає контенту.")
             return
 
-        first_item = content[0]
-        title = first_item.get('title', 'Без назви')
-        description = first_item.get('description', 'Без опису')
+        item = records[0]
+        title = item.get("title", "Без назви")
+        description = item.get("description", "Без опису")
 
-        keyboard = [
-            [
-                InlineKeyboardButton("Деталі", callback_data=f"content_details_{first_item.get('id', 0)}"),
-                InlineKeyboardButton("Наступний", callback_data="next_content")
-            ]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
-        update.message.reply_text(
-            f"*{title}*\n\n{description}",
-            reply_markup=reply_markup,
-            parse_mode='Markdown'
-        )
+        buttons = [[
+            InlineKeyboardButton("Деталі", callback_data=f"content_details_{item.get('id', 0)}"),
+            InlineKeyboardButton("Наступний", callback_data="next_content")
+        ]]
+        update.message.reply_text(f"*{title}*\n\n{description}", reply_markup=InlineKeyboardMarkup(buttons), parse_mode='Markdown')
     except Exception as e:
-        logger.error(f"Помилка в get_content: {e}")
-        update.message.reply_text("Сталася помилка при отриманні контенту.")
+        logger.error(f"Помилка отримання контенту: {e}")
+        update.message.reply_text("Сталася помилка.")
 
 def button_callback(update: Update, context: CallbackContext) -> None:
     query = update.callback_query
-    query.answer()
-
     data = query.data
+    query.answer()
 
     if data.startswith("content_details_"):
         content_id = data.split("_")[-1]
-        try:
-            query.edit_message_text(text=f"Детальна інформація для контенту #{content_id}")
-        except Exception as e:
-            logger.error(f"Помилка в button_callback: {e}")
-            query.edit_message_text(text="Помилка при отриманні деталей.")
+        query.edit_message_text(f"Деталі для контенту #{content_id}")
     elif data == "next_content":
-        query.edit_message_text(text="Наступний елемент контенту буде тут")
+        query.edit_message_text("Поки що функція недоступна.")
