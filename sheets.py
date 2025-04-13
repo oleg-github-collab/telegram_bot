@@ -17,7 +17,7 @@ class SheetsManager:
         self.initialize()
 
     def initialize(self):
-    try:
+        try:
         print(f"📁 Завантажуємо {CREDENTIALS_FILE}")
         self.creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_FILE, self.scope)
         self.client = gspread.authorize(self.creds)
@@ -27,6 +27,7 @@ class SheetsManager:
     except Exception as e:
         print(f"❌ ПОМИЛКА: {e}")
         raise
+
 
 
     def get_worksheet(self, name):
