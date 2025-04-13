@@ -1,57 +1,56 @@
-import os
+#!/usr/bin/env python3
 import logging
+import os
 from telegram.ext import (
-    Updater, CommandHandler, CallbackQueryHandler,
-    MessageHandler, Filters, ConversationHandler
+    Application, CommandHandler, CallbackQueryHandler,
+    MessageHandler, filters, ContextTypes
 )
-from config import BOT_TOKEN
-from handlers import (
-    start, help_command, get_content, button_callback,
-    admin_panel, admin_button_callback, title_handler,
-    description_handler, content_handler, confirmation_handler,
-    delete_content_callback,
-    TITLE, DESCRIPTION, CONTENT, CONFIRMATION
-)
-from utils.helpers import setup_logger
+from telegram import Update
 
-# Налаштування логування
-setup_logger()
-logger = logging.getLogger(__name__)
+# Import configuration
+from config import BOT_TOKEN, BOT_MODE, WEBHOOK_URL, PORT, logger
+
+# Import handlers
+from handlers import start_command, button_callback, handle_yoga_registration, handle_admin_input
+
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Log errors caused by Updates."""
+    logger.error(f"Update {update} caused error {context.error}")
 
 def main() -> None:
-    """ Запуск бота в режимі polling """
-    updater = Updater(BOT_TOKEN, use_context=True)
-    dispatcher = updater.dispatcher
+    """Start the bot."""
+    # Create the Application
+    application = Application.builder().token(BOT_TOKEN).build()
 
-    # Обробники команд
-    dispatcher.add_handler(CommandHandler("start", start))
-    dispatcher.add_handler(CommandHandler("help", help_command))
-    dispatcher.add_handler(CommandHandler("content", get_content))
-    dispatcher.add_handler(CommandHandler("admin", admin_panel))
+    # Add command handlers
+    application.add_handler(CommandHandler("start", start_command))
 
-    # Обробники кнопок
-    dispatcher.add_handler(CallbackQueryHandler(button_callback))
-    dispatcher.add_handler(CallbackQueryHandler(admin_button_callback))
-    dispatcher.add_handler(CallbackQueryHandler(delete_content_callback))
+    # Add callback query handler
+    application.add_handler(CallbackQueryHandler(button_callback))
 
-    # Conversation для додавання контенту адміністратором
-    conv_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(title_handler, pattern='^add_content$')],
-        states={
-            TITLE: [MessageHandler(Filters.text & ~Filters.command, title_handler)],
-            DESCRIPTION: [MessageHandler(Filters.text & ~Filters.command, description_handler)],
-            CONTENT: [MessageHandler(Filters.text & ~Filters.command, content_handler)],
-            CONFIRMATION: [CallbackQueryHandler(confirmation_handler)]
-        },
-        fallbacks=[CommandHandler("cancel", help_command)]
-    )
+    # Add message handler for registration process
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_yoga_registration))
 
-    dispatcher.add_handler(conv_handler)
+    # Add admin message handler (same handler as registration but will check admin state)
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_admin_input))
 
-    # Запуск
-    updater.start_polling()
-    logger.info("🚀 Бот запущено в режимі polling.")
-    updater.idle()
+    # Add error handler
+    application.add_error_handler(error_handler)
+
+    # Start the Bot
+    if BOT_MODE.lower() == 'webhook' and WEBHOOK_URL:
+        # Start webhook mode
+        logger.info(f"Starting bot in webhook mode on port {PORT}")
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=int(PORT),
+            url_path=BOT_TOKEN,
+            webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}"
+        )
+    else:
+        # Start polling mode
+        logger.info("Starting bot in polling mode")
+        application.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
     main()

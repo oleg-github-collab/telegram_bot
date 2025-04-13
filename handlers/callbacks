@@ -1,0 +1,248 @@
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import CallbackContext
+import logging
+from typing import Dict, Any
+import re
+
+from utils.localization import get_text
+from utils.helpers import generate_calendar_keyboard, format_event_details
+from sheets import SheetsClient
+from handlers.user import user_state, main_menu, events_menu, yoga_signup, schedule_menu, store_menu, about_menu
+from handlers.admin import admin_panel, admin_view_registrations, admin_add_event_start, admin_broadcast_start, admin_broadcast_send
+
+logger = logging.getLogger(__name__)
+sheets_client = SheetsClient()
+
+async def button_callback(update: Update, context: CallbackContext) -> None:
+    """Handle button callbacks"""
+    query = update.callback_query
+    user_id = update.effective_user.id
+    user_lang = sheets_client.get_user_language(user_id)
+    
+    # Answer callback query to stop loading animation
+    await query.answer()
+    
+    # Get callback data
+    data = query.data
+    
+    try:
+        # Language selection
+        if data.startswith("lang_"):
+            lang_code = data.split("_")[1]
+            sheets_client.set_user_language(user_id, lang_code)
+            await query.edit_message_text(
+                text=get_text("language_changed", lang_code),
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton(get_text("main_menu", lang_code), callback_data="back_to_main")
+                ]])
+            )
+        
+        # Main menu navigation
+        elif data == "back_to_main" or data == "main_menu":
+            await main_menu(update, context)
+        
+        # Change language
+        elif data == "change_language":
+            keyboard = [
+                [
+                    InlineKeyboardButton("🇺🇦 Українська", callback_data="lang_uk"),
+                    InlineKeyboardButton("🇬🇧 English", callback_data="lang_en"),
+                    InlineKeyboardButton("🇩🇪 Deutsch", callback_data="lang_de")
+                ],
+                [InlineKeyboardButton(get_text("back", user_lang), callback_data="back_to_main")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                text=get_text("language_select", user_lang),
+                reply_markup=reply_markup
+            )
+        
+        # Main menu options
+        elif data == "events":
+            await events_menu(update, context)
+        elif data == "yoga_signup":
+            await yoga_signup(update, context)
+        elif data == "schedule":
+            await schedule_menu(update, context)
+        elif data == "store":
+            await store_menu(update, context)
+        elif data == "about":
+            await about_menu(update, context)
+        
+        # Admin panel
+        elif data == "admin":
+            await admin_panel(update, context)
+        elif data == "admin_registrations":
+            await admin_view_registrations(update, context)
+        elif data == "admin_add_event":
+            await admin_add_event_start(update, context)
+        elif data == "admin_broadcast":
+            await admin_broadcast_start(update, context)
+        elif data == "broadcast_send":
+            await admin_broadcast_send(update, context)
+        
+        # Calendar navigation
+        elif data.startswith("calendar_"):
+            parts = data.split("_")
+            if len(parts) == 3:
+                year = int(parts[1])
+                month = int(parts[2])
+                keyboard, title = generate_calendar_keyboard(year, month)
+                
+                await query.edit_message_text(
+                    text=get_text("date_prompt", user_lang),
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+        
+        # Date selection
+        elif data.startswith("date_"):
+            if user_id in user_state and user_state[user_id].get("step") == "date":
+                date = data.split("_")[1]
+                user_state[user_id]["date"] = date
+                user_state[user_id]["step"] = "class_type"
+                
+                # Get class types from schedule
+                schedule = sheets_client.get_schedule()
+                class_types = set()
+                
+                for item in schedule:
+                    class_name = item.get(f"class_{user_lang}", "") or item.get("class_uk", "") or item.get("class_en", "")
+                    if class_name:
+                        class_types.add(class_name)
+                
+                # Create keyboard with class types
+                keyboard = []
+                for class_type in sorted(class_types):
+                    keyboard.append([InlineKeyboardButton(class_type, callback_data=f"class_{class_type}")])
+                
+                keyboard.append([InlineKeyboardButton(get_text("back", user_lang), callback_data="back_to_main")])
+                
+                await query.edit_message_text(
+                    text=get_text("class_prompt", user_lang),
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+        
+        # Class type selection
+        elif data.startswith("class_"):
+            if user_id in user_state and user_state[user_id].get("step") == "class_type":
+                class_type = data[6:]  # Remove "class_" prefix
+                user_state[user_id]["class_type"] = class_type
+                user_state[user_id]["step"] = "comment"
+                
+                # Create keyboard with skip option
+                keyboard = [[InlineKeyboardButton(get_text("skip", user_lang), callback_data="skip_comment")]]
+                
+                await query.edit_message_text(
+                    text=get_text("comment_prompt", user_lang),
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+        
+        # Skip comment
+        elif data == "skip_comment":
+            if user_id in user_state and user_state[user_id].get("step") == "comment":
+                user_state[user_id]["comment"] = ""
+                
+                # Register to class
+                success, message = sheets_client.add_yoga_registration(
+                    name=user_state[user_id].get("name", ""),
+                    email=user_state[user_id].get("email", ""),
+                    date=user_state[user_id].get("date", ""),
+                    class_type=user_state[user_id].get("class_type", ""),
+                    comment=""
+                )
+                
+                if success:
+                    # Registration successful
+                    await query.edit_message_text(
+                        text=get_text("registration_success", user_lang),
+                        reply_markup=InlineKeyboardMarkup([[
+                            InlineKeyboardButton(get_text("back", user_lang), callback_data="back_to_main")
+                        ]])
+                    )
+                else:
+                    # Registration failed
+                    await query.edit_message_text(
+                        text=f"❌ {message}",
+                        reply_markup=InlineKeyboardMarkup([[
+                            InlineKeyboardButton(get_text("back", user_lang), callback_data="back_to_main")
+                        ]])
+                    )
+                
+                # Clear user state
+                del user_state[user_id]
+        
+        # Event navigation
+        elif data.startswith("next_event_"):
+            index = int(data.split("_")[-1])
+            
+            # Get events from Google Sheets
+            events = sheets_client.get_events()
+            
+            if index < len(events):
+                current_event = events[index]
+                event_details = format_event_details(current_event, user_lang)
+                
+                # Create keyboard
+                keyboard = [
+                    [InlineKeyboardButton(get_text("sign_up", user_lang), callback_data=f"signup_event_{current_event['id']}")],
+                ]
+                
+                # Add navigation
+                nav_row = []
+                if index > 0:
+                    nav_row.append(InlineKeyboardButton("⏪ Prev", callback_data=f"next_event_{index-1}"))
+                if index < len(events) - 1:
+                    nav_row.append(InlineKeyboardButton("⏩ Next", callback_data=f"next_event_{index+1}"))
+                
+                nav_row.append(InlineKeyboardButton(get_text("back", user_lang), callback_data="back_to_main"))
+                keyboard.append(nav_row)
+                
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                # Format message with event details
+                message_text = get_text("event_details", user_lang).format(
+                    title=event_details['title'],
+                    date=event_details['date'],
+                    time=event_details['time'],
+                    location=event_details['location'],
+                    price=event_details['price'],
+                    description=event_details['description']
+                )
+                
+                await query.edit_message_text(
+                    text=message_text,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
+                )
+        
+        # Event signup
+        elif data.startswith("signup_event_"):
+            event_id = data.split("_")[-1]
+            
+            # Initialize user state for registration
+            user_state[user_id] = {"step": "name", "event_id": event_id}
+            
+            # Ask for name
+            await query.edit_message_text(
+                text=get_text("name_prompt", user_lang),
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton(get_text("back", user_lang), callback_data="back_to_main")
+                ]])
+            )
+        
+        # Handle ignore button
+        elif data == "ignore":
+            pass
+        
+        else:
+            logger.warning(f"Unknown callback data: {data}")
+    
+    except Exception as e:
+        logger.error(f"Error handling callback: {e}")
+        await query.edit_message_text(
+            text=get_text("error_occurred", user_lang),
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton(get_text("back", user_lang), callback_data="back_to_main")
+            ]])
+        )
