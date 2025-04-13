@@ -1,45 +1,110 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update
 from telegram.ext import CallbackContext
+from utils.helpers import get_main_keyboard, translate
 from sheets import SheetsManager
 import logging
 
 logger = logging.getLogger(__name__)
 sheets = SheetsManager()
 
-def start(update: Update, context: CallbackContext) -> None:
-    user = update.effective_user
-    update.message.reply_text(f"Привіт, {user.first_name}! Ласкаво просимо до бота.")
+# Словник для збереження мов користувачів
+user_languages = {}
 
-def help_command(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text("Доступні команди: /start /help /content")
+def start(update: Update, context: CallbackContext):
+    """Привітання + вибір мови."""
+    keyboard = [["Українська", "English", "Deutsch"]]
+    update.message.reply_text(
+        "🌐 Please choose your language:\n🌐 Будь ласка, оберіть мову:\n🌐 Bitte wählen Sie Ihre Sprache:",
+        reply_markup=get_lang_keyboard(keyboard)
+    )
 
-def get_content(update: Update, context: CallbackContext) -> None:
+def get_lang_keyboard(keyboard):
+    from telegram import ReplyKeyboardMarkup
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+
+def set_language(update: Update, context: CallbackContext):
+    """Фіксує обрану мову."""
+    lang_text = update.message.text
+    user_id = update.effective_user.id
+
+    lang_map = {
+        "Українська": "uk",
+        "English": "en",
+        "Deutsch": "de"
+    }
+
+    lang = lang_map.get(lang_text, "uk")
+    user_languages[user_id] = lang
+
+    update.message.reply_text(
+        f"✅ Мову встановлено: {lang_text}",
+        reply_markup=get_main_keyboard(lang)
+    )
+
+def handle_message(update: Update, context: CallbackContext):
+    """Головна логіка кнопок."""
+    user_id = update.effective_user.id
+    lang = user_languages.get(user_id, "uk")
+    text = update.message.text
+
+    if text == translate("events", lang):
+        handle_events(update, lang)
+    elif text == translate("yoga", lang):
+        handle_yoga(update, lang)
+    elif text == translate("schedule", lang):
+        handle_schedule(update, lang)
+    elif text == translate("shop", lang):
+        handle_shop(update, lang)
+    elif text == translate("about", lang):
+        handle_about(update, lang)
+    elif text == translate("lang", lang):
+        start(update, context)  # Повторно вибрати мову
+    else:
+        update.message.reply_text("🤖 Не зрозумів запит. Спробуйте ще раз.", reply_markup=get_main_keyboard(lang))
+
+def handle_events(update, lang):
     try:
-        records = sheets.get_all_records("content")
-        if not records:
-            update.message.reply_text("Немає контенту.")
+        rows = sheets.get_all_records("events")
+        if not rows:
+            update.message.reply_text("📭 Немає запланованих подій.")
             return
 
-        item = records[0]
-        title = item.get("title", "Без назви")
-        description = item.get("description", "Без опису")
-
-        buttons = [[
-            InlineKeyboardButton("Деталі", callback_data=f"content_details_{item.get('id', 0)}"),
-            InlineKeyboardButton("Наступний", callback_data="next_content")
-        ]]
-        update.message.reply_text(f"*{title}*\n\n{description}", reply_markup=InlineKeyboardMarkup(buttons), parse_mode='Markdown')
+        response = "📅 Події:\n\n"
+        for r in rows:
+            response += f"🗓 {r.get('date')} — {r.get('title')}\n{r.get('description')}\n\n"
+        update.message.reply_text(response)
     except Exception as e:
-        logger.error(f"Помилка отримання контенту: {e}")
-        update.message.reply_text("Сталася помилка.")
+        logger.error(f"Помилка подій: {e}")
+        update.message.reply_text("⚠️ Помилка при завантаженні подій.")
 
-def button_callback(update: Update, context: CallbackContext) -> None:
-    query = update.callback_query
-    data = query.data
-    query.answer()
+def handle_yoga(update, lang):
+    update.message.reply_text(
+        "🧘 Для запису на заняття надішліть своє ім’я, бажаний день та час.",
+    )
 
-    if data.startswith("content_details_"):
-        content_id = data.split("_")[-1]
-        query.edit_message_text(f"Деталі для контенту #{content_id}")
-    elif data == "next_content":
-        query.edit_message_text("Поки що функція недоступна.")
+def handle_schedule(update, lang):
+    try:
+        rows = sheets.get_all_records("schedule")
+        if not rows:
+            update.message.reply_text("📭 Розклад поки відсутній.")
+            return
+
+        response = "🗓 Розклад:\n\n"
+        for r in rows:
+            response += f"📌 {r.get('day')} — {r.get('time')} — {r.get('activity')}\n"
+        update.message.reply_text(response)
+    except Exception as e:
+        logger.error(f"Помилка розкладу: {e}")
+        update.message.reply_text("⚠️ Помилка при завантаженні розкладу.")
+
+def handle_shop(update, lang):
+    update.message.reply_text(
+        "🛒 Перейдіть до інтернет-магазину 👇\nhttps://www.instagram.com/marina.art.store/"
+    )
+
+def handle_about(update, lang):
+    update.message.reply_text(
+        "👩‍🎨 Я — Марина Камінська, художниця та викладачка йоги з понад 10 роками досвіду.\n"
+        "🎨 Мої роботи виставлялись в Європі.\n"
+        "🧘 Я веду регулярні класи йоги, що поєднують тіло, дихання і свідомість."
+    )

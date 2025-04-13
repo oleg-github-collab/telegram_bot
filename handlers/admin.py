@@ -1,28 +1,68 @@
 from telegram import Update
-from telegram.ext import CallbackContext, ConversationHandler
-from utils.helpers import is_admin
+from telegram.ext import CallbackContext
+from utils.helpers import is_admin, translate
+from sheets import SheetsManager
+import logging
 
-TITLE, DESCRIPTION, CONTENT, CONFIRMATION = range(4)
+logger = logging.getLogger(__name__)
+sheets = SheetsManager()
 
 def admin_panel(update: Update, context: CallbackContext):
-    if not is_admin(update.effective_user.id):
-        return update.message.reply_text("Доступ заборонено.")
-    update.message.reply_text("Адмін панель: /add_content")
+    """Панель адміністратора"""
+    user_id = update.effective_user.id
+    if not is_admin(user_id):
+        update.message.reply_text("⛔ У вас немає доступу до адмін-панелі.")
+        return
+
+    keyboard = [["📥 Переглянути заявки", "📅 Події"], ["⬅️ Назад"]]
+    update.message.reply_text(
+        "🛠 Адмін-панель. Оберіть опцію:",
+        reply_markup=reply_keyboard(keyboard)
+    )
 
 def admin_button_callback(update: Update, context: CallbackContext):
-    pass  # Порожній для прикладу
+    """Обробка кнопок у адмін-панелі"""
+    text = update.message.text
+    if text == "📥 Переглянути заявки":
+        handle_applications(update)
+    elif text == "📅 Події":
+        handle_event_overview(update)
+    elif text == "⬅️ Назад":
+        from handlers.user import handle_message
+        return handle_message(update, context)
+    else:
+        update.message.reply_text("🤖 Невідома команда.")
 
-def title_handler(update: Update, context: CallbackContext):
-    return TITLE
+def reply_keyboard(keyboard):
+    from telegram import ReplyKeyboardMarkup
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-def description_handler(update: Update, context: CallbackContext):
-    return DESCRIPTION
+def handle_applications(update):
+    try:
+        rows = sheets.get_all_records("applications")
+        if not rows:
+            update.message.reply_text("📭 Немає нових заявок.")
+            return
 
-def content_handler(update: Update, context: CallbackContext):
-    return CONTENT
+        text = "📬 Заявки:\n\n"
+        for row in rows:
+            text += f"👤 {row.get('name')} — {row.get('time')}\n"
+        update.message.reply_text(text)
+    except Exception as e:
+        logger.error(f"Помилка заявок: {e}")
+        update.message.reply_text("⚠️ Сталася помилка при завантаженні заявок.")
 
-def confirmation_handler(update: Update, context: CallbackContext):
-    return CONFIRMATION
+def handle_event_overview(update):
+    try:
+        rows = sheets.get_all_records("events")
+        if not rows:
+            update.message.reply_text("📭 Немає подій.")
+            return
 
-def delete_content_callback(update: Update, context: CallbackContext):
-    pass  # Порожній для прикладу
+        text = "📅 Події:\n\n"
+        for row in rows:
+            text += f"🗓 {row.get('date')} — {row.get('title')}\n"
+        update.message.reply_text(text)
+    except Exception as e:
+        logger.error(f"Помилка при подіях: {e}")
+        update.message.reply_text("⚠️ Не вдалося завантажити події.")

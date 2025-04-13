@@ -1,13 +1,13 @@
 [Unit]
-Description=Telegram Bot Service
+Description=Telegram Bot for Marina Kaminska
 After=network.target
 
 [Service]
 User=root
-Group=root
 WorkingDirectory=/opt/telegram_bot
-ExecStart=/opt/telegram_bot/venv/bin/python bot.py
+ExecStart=/opt/telegram_bot/venv/bin/python3 /opt/telegram_bot/bot.py
 Restart=always
+Environment="PYTHONUNBUFFERED=1"
 
 [Install]
 WantedBy=multi-user.target
