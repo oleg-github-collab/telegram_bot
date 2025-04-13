@@ -1,0 +1,33 @@
+# Віртуальне середовище
+venv/
+env/
+ENV/
+
+# Кеш Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Конфіденційні дані
+.env
+credentials.json
+*.key
+*.pem
+
+# Логи та тимчасові файли
+logs/
+*.log
+*.tmp
+.DS_Store
+
+# Бази даних та файли SQLite
+*.db
+*.sqlite3
+
+# Директорії IDE
+.idea/
+.vscode/
+*.swp
+*.swo
