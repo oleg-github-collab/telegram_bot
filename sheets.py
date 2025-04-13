@@ -17,14 +17,17 @@ class SheetsManager:
         self.initialize()
 
     def initialize(self):
-        try:
-            self.creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_FILE, self.scope)
-            self.client = gspread.authorize(self.creds)
-            self.sheet = self.client.open_by_key(SPREADSHEET_ID)
-            logger.info("Успішно підключено до Google Sheets")
-        except Exception as e:
-            logger.error(f"Помилка підключення до Google Sheets: {e}")
-            raise
+    try:
+        print(f"📁 Завантажуємо {CREDENTIALS_FILE}")
+        self.creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_FILE, self.scope)
+        self.client = gspread.authorize(self.creds)
+        print(f"🔑 Авторизовано, пробуємо підключитись до: {SPREADSHEET_ID}")
+        self.sheet = self.client.open_by_key(SPREADSHEET_ID)
+        print(f"✅ Успішно підключено до таблиці: {self.sheet.title}")
+    except Exception as e:
+        print(f"❌ ПОМИЛКА: {e}")
+        raise
+
 
     def get_worksheet(self, name):
         """Отримати аркуш за назвою, створити якщо відсутній."""
