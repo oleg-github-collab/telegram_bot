@@ -11,7 +11,8 @@ from handlers import (
     delete_content_callback,
     TITLE, DESCRIPTION, CONTENT, CONFIRMATION
 )
-from utils import setup_logger
+from utils.helpers import setup_logger
+
 
 # Налаштування логування
 setup_logger()
