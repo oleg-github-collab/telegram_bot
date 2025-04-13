@@ -24,32 +24,16 @@ def main() -> None:
     updater = Updater(BOT_TOKEN)
     dispatcher = updater.dispatcher
 
-    # Обробники команд (залишіть ваші існуючі обробники)
+    # Обробники команд
     dispatcher.add_handler(CommandHandler("start", start))
     dispatcher.add_handler(CommandHandler("help", help_command))
     dispatcher.add_handler(CommandHandler("content", get_content))
     dispatcher.add_handler(CommandHandler("admin", admin_panel))
 
-    # Зберігаємо всі ваші існуючі обробники...
-
-    # Зміна режиму з polling на webhook
-    webhook_url = os.getenv('WEBHOOK_URL', '')
-    port = int(os.getenv('PORT', '8443'))
-
-    if not webhook_url:
-        logger.error("WEBHOOK_URL не вказано в .env файлі!")
-        return
-
-    # Налаштування і запуск вебхука
-    updater.start_webhook(
-        listen='0.0.0.0',
-        port=port,
-        url_path=BOT_TOKEN,
-        webhook_url=f'{webhook_url}/{BOT_TOKEN}'
-    )
-
-    logger.info(f"Бот запущено з вебхуком на {webhook_url}")
+    # 🚀 ЗАПУСК В POLLING
+    updater.start_polling()
+    logger.info("Бот запущено в режимі polling.")
     updater.idle()
-
+    
 if __name__ == '__main__':
     main()
